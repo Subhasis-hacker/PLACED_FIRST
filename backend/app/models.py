@@ -1,9 +1,11 @@
-from sqlalchemy import Column,Integer,String
+from sqlalchemy import Boolean, Column, Integer, String
 from app.db.db import Base
 
-class FileModel(Base):
-    __tablename__="files"
+class UserModel(Base):
+    __tablename__ = "users"
 
-    id=Column(Integer,primary_key=True)
-    filename=Column(String)
-    file_url=Column(String)
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)

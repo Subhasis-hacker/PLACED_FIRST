@@ -1,12 +1,22 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
+class UserBase(BaseModel):
+    username: str
+    email: EmailStr
 
-# Response Schema
-class FileResponse(BaseModel):
+class UserCreate(UserBase):
+    password: str
+
+class UserResponse(UserBase):
     id: int
-    filename: str
-    file_url: str
+    is_active: bool
 
-    model_config = {
-        "from_attributes": True
-    }
+    class Config:
+        from_attributes = True  # Allows Pydantic to read SQLAlchemy models
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: str | None = None
