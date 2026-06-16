@@ -7,8 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.db.db import get_db
 from app.models import UserModel
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
-SECRET_KEY = "your_super_secret_production_key"  # Move to .env later!
+SECRET_KEY = os.getenv("SECRET_KEY")  # Move to .env later!
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
