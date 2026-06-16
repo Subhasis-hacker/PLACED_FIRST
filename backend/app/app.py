@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, Form, UploadFile, File
 from app.services.ingest import process_pdf
 
 app = FastAPI(
@@ -8,9 +8,9 @@ app = FastAPI(
 )
 
 @app.post("/upload")  # Clean string path, no f-string interpolation
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...),language: str = Form("English")):
     content = await file.read()
-    rag_response = await process_pdf(content)
+    rag_response = await process_pdf(content,language)  # Ensure process_pdf is an async function
 
     # Clean string extraction to bypass FastAPI's Pydantic v1 error
     if hasattr(rag_response, "content"):  # If it's a LangChain AIMessage object
@@ -24,5 +24,6 @@ async def upload(file: UploadFile = File(...)):
 
     return {
         "status": "success",
+        "language": language,
         "rag_response": final_text  # Fixed the variable name typo
     }
