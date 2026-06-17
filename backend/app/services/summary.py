@@ -73,38 +73,50 @@ def run_rag(text, user_question=None, chat_history=None, language="English"):
     # 6. REFINE DOCUMENT CHAIN CONFIGURATION (MEDICAL CLINICAL FOCUS)
     # ========================================================
     initial_medical_prompt = """
-    You are an expert medical assistant analyzer. Your job is to extract, evaluate, and summarize clinical information accurately based on the provided text fragment. Do not extrapolate information not present in the document.
-    
+    You are an expert medical diagnostic analyzer. Your primary objective is to evaluate the provided medical report fragment and explicitly identify any clinical diseases, medical conditions, or structural/biochemical abnormalities present in the patient's body.
+
+    Do not extrapolate, speculate, or diagnose conditions that are not explicitly backed by the provided metrics.
+
     Document text fragment:
     "{text}"
-    
-    CONCISE INITIAL MEDICAL SUMMARY/ANALYSIS:
-    CRITICAL: You must write the entire summary/analysis in {language}.
+
+    DIAGNOSED DISEASES & CONDITIONS REPORT:
+    1. Primary Diseases/Conditions Identified:
+    2. Specific Clinical Evidence (Lab Values/Biomarkers that prove the condition):
+    3. Secondary Abnormalities/Risk Factors:
+
+    CRITICAL: You must write the entire analysis in {language}.
     """
-    # FIX 2: Explicitly added "language" to input_variables
+
     INITIAL_PROMPT = PromptTemplate(template=initial_medical_prompt, input_variables=["text", "language"])
 
+
     refine_medical_prompt = """
-    You are an expert medical assistant analyzer. Your objective is to produce a cohesive, precise final clinical summary.
-    We have provided an existing summary/analysis up to a certain point:
+    You are an expert medical diagnostic analyzer. Your sole objective is to identify and compile a definitive list of specific diseases, chronic conditions, or clinical illnesses present in the patient's body based on their medical records.
+
+    We have provided an existing disease analysis up to a certain point:
     "{existing_answer}"
 
-    We now have the opportunity to update and refine this analysis with new clinical evidence or context from an additional section of the record below.
+    We now have the opportunity to update and refine this list using an additional section of the medical record below.
     ------------
     "{text}"
     ------------
 
-    Given this new clinical context, seamlessly refine the original summary to create a more comprehensive, structured report. 
-    Maintain strict medical accuracy. If the new section contains repetitive information or nothing relevant, output the original summary exactly.
-    
+    Given this new clinical context, seamlessly refine the original diagnosis report. 
+
+    Guidelines for Refinement:
+    - Append any newly discovered diseases or complications found in the new text slice.
+    - For diseases already identified, append any newly discovered supporting laboratory evidence or biomarkers.
+    - Maintain strict clinical accuracy. Do not hypothesize unlisted illness.
+    - If the new section contains repetitive information or nothing relevant to the patient's diseases, output the original report exactly.
+
     CRITICAL: The entire final report must be written in {language}.
     """
-    # FIX 3: Explicitly added "language" to input_variables
+
     REFINE_PROMPT = PromptTemplate(
         template=refine_medical_prompt, 
         input_variables=["existing_answer", "text", "language"]
     )
-
     refine_chain = load_summarize_chain(
         llm=llm,
         chain_type="refine",
