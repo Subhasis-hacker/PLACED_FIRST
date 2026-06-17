@@ -2,14 +2,14 @@ import token
 from sqlalchemy.orm import Session
 from app.db.db import engine, Base, get_db
 from app.models import UserModel
-from app.db.schemas import UserCreate, UserResponse, Token
+from app.db.schemas import UserCreate, UserResponse, Token,ChatPayload,DemographicsExtractor,MedicalReport
 from app.services.auth import (authenticate_user, create_access_token, get_current_active_user, get_password_hash,ACCESS_TOKEN_EXPIRE_MINUTES)
 from fastapi import Depends, FastAPI, Form, UploadFile, File,HTTPException,status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from app.services.ingest import process_pdf
 from datetime import datetime, timedelta
-
-
+from app.services.mediadv import orchestrate_chat_flow
+from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI(title="medi-friend", description="A simple RAG API using FastAPI and LangChain", version="0.1.0")
@@ -18,7 +18,12 @@ app = FastAPI(title="medi-friend", description="A simple RAG API using FastAPI a
 
 Base.metadata.create_all(bind=engine)
 
+
 app = FastAPI()
+app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_credentials=True,allow_methods=["*"],allow_headers=["*"],)
+
+
+
 
 # 1. Registration endpoint to save users to your cloud DB
 @app.post("/register", response_model=UserResponse)
@@ -52,6 +57,8 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
+
+
 # 2. Updated Token endpoint using Database session
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -79,7 +86,7 @@ async def read_item_own(current_user: UserModel = Depends(get_current_active_use
 
 
 
-#upload endpoint
+#3 upload endpoint
 @app.post("/upload")  # Clean string path, no f-string interpolation
 async def upload(file: UploadFile = File(...),language: str = Form("English")):
     content = await file.read()
@@ -100,3 +107,21 @@ async def upload(file: UploadFile = File(...),language: str = Form("English")):
         "language": language,
         "rag_response": final_text  # Fixed the variable name typo
     }
+ 
+ 
+ 
+ 
+#4  medical adviser endpoint
+@app.post("/chat", response_model=ChatPayload)
+async def chat_endpoint(payload: ChatPayload):
+    """
+    Receives the full conversation history payload, validates the input structure,
+    and delegates execution execution completely to the medical AI service layer.
+    """
+    if not payload.chat_history:
+        raise HTTPException(status_code=400, detail="Chat history cannot be empty.")
+        
+    # Execute state transitions and LLM evaluation loops
+    updated_payload = orchestrate_chat_flow(payload)
+    
+    return updated_payload

@@ -20,8 +20,11 @@ load_dotenv()
 os.environ['HF_TOKEN'] = os.getenv("HF_TOKEN")
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 api_key = os.getenv("GROQ_API_KEY")
-
+llm = ChatGroq(groq_api_key=api_key, model="llama-3.3-70b-versatile", temperature=0.1)   
 # FIX 1: Added 'language' parameter. Adjusted default question logic safely inside the function body.
+
+
+
 def run_rag(text, user_question=None, chat_history=None, language="English"):
     if chat_history is None:
         chat_history = ChatMessageHistory()
@@ -38,7 +41,7 @@ def run_rag(text, user_question=None, chat_history=None, language="English"):
     base_retriever = vector_db.as_retriever(search_kwargs={"k": 4})
 
     # 3. LLM Setup
-    llm = ChatGroq(groq_api_key=api_key, model="llama-3.3-70b-versatile", temperature=0.1)   
+    # llm = ChatGroq(groq_api_key=api_key, model="llama-3.3-70b-versatile", temperature=0.1)   
 
     # 4. History-Aware Retriever Setup
     contextualize_q_system_prompt = (
@@ -137,3 +140,6 @@ def run_rag(text, user_question=None, chat_history=None, language="English"):
         "updated_history": chat_history
     }
     
+    
+
+
