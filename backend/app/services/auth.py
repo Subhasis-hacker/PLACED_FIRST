@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-
+from app.db.schemas import DoctorModel
 from app.db.db import get_db
 from app.models import UserModel
 from dotenv import load_dotenv
@@ -77,3 +77,46 @@ async def get_current_active_user(current_user: UserModel = Depends(get_current_
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+
+######. doctor database authuntication model
+
+def get_doctor_by_email(db: Session, email: str):
+    return db.query(DoctorModel).filter(DoctorModel.email == email).first()
+
+def authenticate_doctor(db: Session, email: str, password: str):
+    doctor = get_doctor_by_email(db, email)
+    if not doctor:
+        return False
+    if not verify_password(password, doctor.hashed_password):
+        return False
+    return doctor
+
+# Scoped Token Factory
+def create_role_access_token(data: dict, role: str, expires_delta: timedelta | None = None):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire, "role": role})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+# Guard for Doctor Context Routes
+async def get_current_doctor(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials or invalid role mapping",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        role: str = payload.get("role")
+        if email is None or role != "doctor":
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    doctor = get_doctor_by_email(db, email=email)
+    if doctor is None or not doctor.is_active:
+        raise credentials_exception
+    return doctor
