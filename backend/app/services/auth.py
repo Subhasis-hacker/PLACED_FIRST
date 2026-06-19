@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY")  # Move to .env later!
+SECRET_KEY = os.getenv("SECRET_KEY", "medi-friend-local-development-secret")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -83,7 +83,7 @@ async def get_current_active_user(current_user: UserModel = Depends(get_current_
 ######. doctor database authuntication model
 
 def get_doctor_by_email(db: Session, email: str):
-    return db.query(DoctorModel).filter(DoctorModel.email == email).first()
+    return db.query(DoctorModel).filter(DoctorModel.email == email.lower().strip()).first()
 
 def authenticate_doctor(db: Session, email: str, password: str):
     doctor = get_doctor_by_email(db, email)
