@@ -1,27 +1,19 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { authAPI } from '../api/client';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const initializeAuth = async () => {
       const storedToken = localStorage.getItem('token');
-      const storedRole = localStorage.getItem('role');
-      if (storedToken && storedRole) {
+      if (storedToken) {
         try {
-          if (storedRole === 'patient') {
-            const res = await authAPI.getMe();
-            setUser(res.data);
-          } else {
-            const res = await authAPI.getDoctorMe();
-            setUser(res.data);
-          }
-          setRole(storedRole);
+          const res = await authAPI.getMe();
+          setUser(res.data);
         } catch (err) {
           logout();
         }
@@ -31,22 +23,18 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
   }, []);
 
-  const login = (token, userRole, profileData) => {
+  const login = (token, profileData) => {
     localStorage.setItem('token', token);
-    localStorage.setItem('role', userRole);
-    if (profileData?.email) localStorage.setItem('userEmail', profileData.email);
-    setRole(userRole);
     setUser(profileData);
   };
 
   const logout = () => {
     localStorage.clear();
     setUser(null);
-    setRole(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

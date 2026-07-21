@@ -59,99 +59,33 @@ function getErrorMessage(error, fallback) {
   return error?.response?.data?.detail || fallback;
 }
 
-function splitAnalysisSections(content) {
-  const headings = [
-    'Diagnosis Breakdown',
-    'Key Health Metrics',
-    'Recommended Next Steps',
-  ];
 
-  if (!content) {
-    return headings.map((title) => ({ title, body: 'Analysis will appear here after upload.' }));
-  }
 
-  const normalized = content
-    .replace(/📋|📊|🛡️|###/g, '')
-    .replace(/DIAGNOSIS BREAKDOWN/gi, 'Diagnosis Breakdown')
-    .replace(/KEY HEALTH METRICS/gi, 'Key Health Metrics')
-    .replace(/RECOMMENDED NEXT STEPS/gi, 'Recommended Next Steps');
 
-  return headings.map((title, index) => {
-    const start = normalized.indexOf(title);
-    const next = headings[index + 1] ? normalized.indexOf(headings[index + 1]) : -1;
-    const body = start >= 0
-      ? normalized.slice(start + title.length, next > start ? next : undefined).trim()
-      : (index === 0 ? normalized.trim() : 'No specific details found in this section yet.');
-    return { title, body: body || 'No specific details found in this section yet.' };
-  });
-}
-
-function StatusStepper({ status }) {
-  const steps = [
-    { key: 'drafted', label: 'Drafted' },
-    { key: 'sent', label: 'Sent to Doctor' },
-    { key: 'under_review', label: 'Under Review' },
-    { key: 'approved', label: 'Approved' },
-  ];
-
-  const activeIndex = status === 'approved' ? 3 : status === 'under_review' ? 2 : status === 'sent' ? 1 : status === 'drafted' ? 0 : -1;
-
-  return (
-    <div className="space-y-3">
-      {steps.map((step, index) => {
-        const active = index <= activeIndex;
-        return (
-          <div key={step.key} className="flex items-center gap-3">
-            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black ${active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              {index + 1}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className={`text-sm font-bold ${active ? 'text-slate-900' : 'text-slate-400'}`}>{step.label}</p>
-              {index < steps.length - 1 && <div className={`mt-2 h-6 w-px ${index < activeIndex ? 'bg-blue-200' : 'bg-slate-200'}`} />}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function PatientDashboard() {
   const { logout, user } = useAuth();
   const [file, setFile] = useState(null);
   const [language, setLanguage] = useState('English');
   const [uploading, setUploading] = useState(false);
-  const [routing, setRouting] = useState(false);
-  const [downloadingId, setDownloadingId] = useState(null);
-  const [ragContent, setRagContent] = useState('');
-  const [doctorEmail, setDoctorEmail] = useState('');
-  const [cases, setCases] = useState([]);
+  const [activeReport, setActiveReport] = useState(null);
   const [toast, setToast] = useState(null);
   const [chatMessage, setChatMessage] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([initialAssistantMessage]);
 
-  const activeCase = cases[0] || null;
-  const localStatus = activeCase?.status || (ragContent ? 'drafted' : '');
-  const sections = useMemo(() => splitAnalysisSections(ragContent), [ragContent]);
+  const sections = useMemo(() => [
+    { title: 'Precautions', body: activeReport?.precautions?.join('\n- ') || 'No specific details found in this section yet.' },
+    { title: 'Primary Treatments', body: activeReport?.primary_treatments?.join('\n- ') || 'No specific details found in this section yet.' },
+    { title: 'When to Seek Clinical Care', body: activeReport?.when_to_seek_clinical_care?.join('\n- ') || 'No specific details found in this section yet.' },
+  ], [activeReport]);
 
   const notify = (message, type = 'success') => {
     setToast({ message, type });
     window.setTimeout(() => setToast(null), 3600);
   };
 
-  const refreshCases = async () => {
-    try {
-      const response = await medicalAPI.getPatientCases();
-      setCases(response.data || []);
-    } catch (error) {
-      notify(getErrorMessage(error, 'Unable to refresh your case status right now.'), 'error');
-    }
-  };
 
-  useEffect(() => {
-    refreshCases();
-  }, []);
 
   const handleUpload = async (event) => {
     event.preventDefault();
@@ -163,8 +97,9 @@ export default function PatientDashboard() {
     setUploading(true);
     try {
       const response = await medicalAPI.uploadPDF(file, language);
-      const analysis = response.data?.rag_response || 'No analysis returned from the server.';
-      setRagContent(analysis);
+      const analysis = response.data?.report?.medical_summary || 'No analysis returned from the server.';
+      const r = response.data?.report || {};
+      setActiveReport({ ...r, id: response.data?.report_id });
       setChatHistory([
         initialAssistantMessage,
         { role: 'user', content: `Uploaded ${file.name} for ${language} analysis.` },
@@ -193,7 +128,7 @@ export default function PatientDashboard() {
         message: userMessage.content,
         history: chatHistory.map((item) => ({ role: item.role, content: cleanChatText(item.content) })),
         language,
-        context: cleanChatText(ragContent),
+        reportId: activeReport?.id,
       });
       const assistantMessage = {
         role: 'assistant',
@@ -207,50 +142,7 @@ export default function PatientDashboard() {
     }
   };
 
-  const handleRouteToDoctor = async (event) => {
-    event.preventDefault();
-    if (!ragContent) {
-      notify('Analyze a PDF before forwarding the case.', 'error');
-      return;
-    }
 
-    setRouting(true);
-    try {
-      const response = await medicalAPI.forwardCase({
-        doctorEmail,
-        aiAnalysis: ragContent,
-        language,
-        uploadedFilename: file?.name,
-      });
-      setCases((prev) => [response.data.case, ...prev]);
-      notify('Case data forwarded to your doctor.');
-    } catch (error) {
-      notify(getErrorMessage(error, 'Workflow transmission error.'), 'error');
-    } finally {
-      setRouting(false);
-    }
-  };
-
-  const handleDownload = async (caseId) => {
-    setDownloadingId(caseId);
-    try {
-      const response = await medicalAPI.downloadPrescription(caseId);
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `medi_friend_prescription_${caseId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      notify('Signed prescription downloaded.');
-    } catch (error) {
-      notify(getErrorMessage(error, 'Prescription download is not available yet.'), 'error');
-    } finally {
-      setDownloadingId(null);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -270,7 +162,7 @@ export default function PatientDashboard() {
               </button>
               <button className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-500">
                 <span>02</span>
-                Prescriptions
+                Reports
               </button>
             </nav>
           </div>
@@ -329,10 +221,24 @@ export default function PatientDashboard() {
             {sections.map((section) => (
               <article key={section.title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 className="text-sm font-black text-slate-950">{section.title}</h3>
-                <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">{section.body}</div>
+                <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  {activeReport ? `- ${section.body}` : section.body}
+                </div>
               </article>
             ))}
           </section>
+
+          {activeReport?.medical_disclaimer && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
+              <div className="flex items-start gap-3">
+                <span className="text-amber-600 font-bold mt-0.5">!</span>
+                <div>
+                  <h3 className="text-sm font-black text-amber-900">Medical Disclaimer</h3>
+                  <p className="mt-1 text-sm leading-6 text-amber-800">{activeReport.medical_disclaimer}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <section className="flex h-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -371,65 +277,6 @@ export default function PatientDashboard() {
         <aside className="space-y-5 border-t border-slate-200 bg-slate-50 p-4 sm:p-6 lg:border-l lg:border-t-0">
           <BmiCalculator />
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Case Routing</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-500">Forward the AI draft to your doctor's clinical email.</p>
-            <form onSubmit={handleRouteToDoctor} className="mt-4 space-y-3">
-              <input
-                type="email"
-                required
-                value={doctorEmail}
-                onChange={(event) => setDoctorEmail(event.target.value)}
-                placeholder="doctor@hospital.com"
-                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-              />
-              <button
-                disabled={routing || !ragContent}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {routing && <Spinner />}
-                Forward Case Data
-              </button>
-            </form>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-950">Live Status</h3>
-              <button onClick={refreshCases} className="text-xs font-black text-blue-600 hover:text-blue-700">Refresh</button>
-            </div>
-            <StatusStepper status={localStatus} />
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Download Gateway</h3>
-            <div className="mt-4 space-y-3">
-              {cases.length === 0 && <p className="text-sm leading-6 text-slate-500">Your approved prescription will unlock here after doctor review.</p>}
-              {cases.map((item) => (
-                <div key={item.case_id || item.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-slate-900">Case #{item.case_id || item.id}</p>
-                      <p className="truncate text-xs font-semibold text-slate-500">{item.doctor_email || 'Doctor assigned'}</p>
-                    </div>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-black ${item.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                      {item.status}
-                    </span>
-                  </div>
-                  {item.status === 'approved' && (
-                    <button
-                      onClick={() => handleDownload(item.case_id || item.id)}
-                      disabled={downloadingId === (item.case_id || item.id)}
-                      className="mt-3 inline-flex w-full animate-pulse items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-black text-white shadow-md transition hover:bg-blue-700 disabled:opacity-60"
-                    >
-                      {downloadingId === (item.case_id || item.id) && <Spinner />}
-                      Download Signed Prescription
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
         </aside>
       </div>
     </div>
