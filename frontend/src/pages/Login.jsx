@@ -98,7 +98,7 @@ export default function Login() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Username or Email
+                UserEmail
               </label>
               <div className="relative">
                 <input
