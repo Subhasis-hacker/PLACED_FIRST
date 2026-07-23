@@ -54,3 +54,4 @@ bcrypt==4.0.1
 bcrypt
 reportlab
 supabase
+psycopg2-binary

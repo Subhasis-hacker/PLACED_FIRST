@@ -1,6 +1,9 @@
-from typing import Literal
-
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from datetime import date, datetime
+from typing import Optional, List,Literal
+from app.models import BookingStatus
+
+
 
 
 class UserBase(BaseModel):
@@ -60,3 +63,70 @@ class MedicalChatRequest(BaseModel):
 
 class MedicalChatResponse(BaseModel):
     reply: str | None = None
+    
+    
+
+# --- Doctor Schemas ---
+class DoctorRegister(BaseModel):
+    name: str = Field(..., min_length=2, example="Dr. Sarah Connor")
+    email: EmailStr
+    phone: str = Field(..., example="+1234567890")
+    city: str = Field(..., example="Rourkela")
+    specialty: str = Field(..., example="Cardiology")
+    password: str = Field(..., min_length=6)
+
+class DoctorLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class DoctorCardResponse(BaseModel):
+    id: int
+    name: str
+    specialty: str
+    city: str
+    phone: str
+    average_rating: float
+
+    class Config:
+        from_attributes = True
+
+class DoctorAnalytics(BaseModel):
+    doctor_id: int
+    name: str
+    specialty: str
+    city: str
+    total_patients_checked: int
+    average_rating: float
+
+# --- Booking & Queue Schemas ---
+class BookingCreate(BaseModel):
+    doctor_id: int
+    patient_id: int
+    booking_date: date
+    time_slot: str
+
+class PatientInQueue(BaseModel):
+    patient_name: str
+    patient_city: str
+    patient_email: str
+    token_number: int
+    time_slot: str
+    booking_id: int
+
+class BookingResponse(BaseModel):
+    id: int
+    doctor_id: int
+    patient_id: int
+    booking_date: date
+    time_slot: str
+    token_number: int
+    status: BookingStatus
+
+    class Config:
+        from_attributes = True
+
+class RatingCreate(BaseModel):
+    booking_id: int
+    patient_id: int
+    stars: int = Field(..., ge=1, le=5)
+    review: Optional[str] = None

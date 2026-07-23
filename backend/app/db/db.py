@@ -1,37 +1,29 @@
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
 
-# Get the URL from env
-RAW_DB_URL = os.getenv("DATABASE_URL", "sqlite:///./sql_app.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Logic to handle managed PostgreSQL connections
-if RAW_DB_URL.startswith("postgresql://"):
-    # 1. Use the psycopg2 driver
-    DATABASE_URL = RAW_DB_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
-    
-    # 2. Force SSL for hosted PostgreSQL providers when the URL omits it
-    if "sslmode=" not in DATABASE_URL:
-        separator = "?" if "?" not in DATABASE_URL else "&"
-        DATABASE_URL += f"{separator}sslmode=require"
-else:
-    DATABASE_URL = RAW_DB_URL
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL is not set in the environment variables.")
 
-# Create the engine
+# SQLAlchemy handles connection pooling under the hood
+# pool_pre_ping=True checks if connections are alive before using them (vital for Supabase idle timeouts)
 engine = create_engine(
     DATABASE_URL,
-    # Keep connect_args for local sqlite testing
-    connect_args={"check_same_thread": False} if RAW_DB_URL.startswith("sqlite") else {}
+    pool_pre_ping=True,
+    pool_recycle=300,
+    connect_args={"connect_timeout": 10},
 )
 
-# Session Setup
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Dependency for FastAPI
+
+# FastAPI Dependency
 def get_db():
     db = SessionLocal()
     try:

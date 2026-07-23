@@ -38,3 +38,4 @@ export const medicalAPI = {
     API.post('/chat', { message, history, language, session_id: sessionId })
   ),
 };
+

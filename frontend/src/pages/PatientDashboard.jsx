@@ -18,6 +18,50 @@ function cleanChatText(text) {
     .trim();
 }
 
+// --- Icons Configuration ---
+const Icons = {
+  Blood: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path>
+    </svg>
+  ),
+  XRay: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+      <path d="M8 12h8"></path>
+      <path d="M12 8v8"></path>
+    </svg>
+  ),
+  MRI: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="10"></circle>
+      <circle cx="12" cy="12" r="6"></circle>
+      <circle cx="12" cy="12" r="2"></circle>
+    </svg>
+  ),
+  ECG: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M2 12h4l2-9 5 18 4-10 3 4h2"></path>
+    </svg>
+  ),
+  Prescription: (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M10.5 20.5 7 17l-4 4"></path>
+      <path d="M14 3.5 20.5 10"></path>
+      <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"></path>
+      <path d="m8.5 8.5 7 7"></path>
+    </svg>
+  ),
+};
+
+const REPORT_TYPES = [
+  { id: 'blood_test', label: 'Blood Test', icon: Icons.Blood },
+  { id: 'x_ray', label: 'X-Ray', icon: Icons.XRay },
+  { id: 'mri', label: 'MRI', icon: Icons.MRI },
+  { id: 'ecg', label: 'ECG', icon: Icons.ECG },
+  { id: 'prescription', label: 'Prescription', icon: Icons.Prescription },
+];
+
 function MediDoll() {
   return (
     <div className="relative h-16 w-16 shrink-0">
@@ -59,10 +103,6 @@ function getErrorMessage(error, fallback) {
   return error?.response?.data?.detail || fallback;
 }
 
-
-
-
-
 export default function PatientDashboard() {
   const { logout, user } = useAuth();
   const [file, setFile] = useState(null);
@@ -73,6 +113,7 @@ export default function PatientDashboard() {
   const [chatMessage, setChatMessage] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([initialAssistantMessage]);
+  const [selectedReportType, setSelectedReportType] = useState('blood_test');
 
   const sections = useMemo(() => [
     { title: 'Precautions', body: activeReport?.precautions?.join('\n- ') || 'No specific details found in this section yet.' },
@@ -84,8 +125,6 @@ export default function PatientDashboard() {
     setToast({ message, type });
     window.setTimeout(() => setToast(null), 3600);
   };
-
-
 
   const handleUpload = async (event) => {
     event.preventDefault();
@@ -142,13 +181,14 @@ export default function PatientDashboard() {
     }
   };
 
-
+  const activeReportObj = REPORT_TYPES.find(t => t.id === selectedReportType);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_340px]">
+        {/* Left Sidebar */}
         <aside className="flex flex-col justify-between border-b border-slate-200 bg-white p-5 lg:border-b-0 lg:border-r">
           <div>
             <div className="mb-8">
@@ -178,12 +218,15 @@ export default function PatientDashboard() {
           </div>
         </aside>
 
+        {/* Main Content */}
         <main className="min-w-0 space-y-6 p-4 sm:p-6 xl:p-8">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          
+          {/* Top Section: Report Type Selection & Upload */}
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between mb-6">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">AI triage intake</p>
-                <h2 className="mt-1 text-2xl font-black text-slate-950">Upload medical PDF</h2>
+                <h2 className="mt-1 text-2xl font-black text-slate-950">Analyze Medical Report</h2>
               </div>
               <div className="flex flex-wrap gap-2 rounded-lg bg-slate-100 p-1">
                 {languages.map((item) => (
@@ -199,24 +242,58 @@ export default function PatientDashboard() {
               </div>
             </div>
 
-            <form onSubmit={handleUpload} className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={(event) => setFile(event.target.files?.[0] || null)}
-                className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-blue-700 focus:border-blue-500 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={uploading}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {uploading && <Spinner />}
-                {uploading ? 'Analyzing' : 'Analyze Report'}
-              </button>
-            </form>
+            {/* Report Type Tabs */}
+            <div className="mb-6 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+              {REPORT_TYPES.map((type) => (
+                <button
+                  key={type.id}
+                  onClick={() => setSelectedReportType(type.id)}
+                  className={`flex min-w-max items-center gap-2.5 rounded-xl border px-5 py-3 text-sm font-bold transition-all ${
+                    selectedReportType === type.id
+                      ? 'border-blue-600 bg-blue-600 text-white shadow-md'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50'
+                  }`}
+                >
+                  <type.icon className={`h-5 w-5 ${selectedReportType === type.id ? 'text-blue-200' : 'text-slate-400'}`} />
+                  {type.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Dynamic Upload Area */}
+            <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
+              {selectedReportType === 'blood_test' ? (
+                <form onSubmit={handleUpload} className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(event) => setFile(event.target.files?.[0] || null)}
+                    className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-blue-700 focus:border-blue-500 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={uploading}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-8 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {uploading && <Spinner />}
+                    {uploading ? 'Analyzing...' : 'Analyze PDF'}
+                  </button>
+                </form>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <div className="mb-3 rounded-full bg-white p-4 shadow-sm border border-slate-100">
+                     {activeReportObj && <activeReportObj.icon className="h-8 w-8 text-slate-300" />}
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">Upload {activeReportObj?.label}</h3>
+                  <p className="mt-2 max-w-sm text-sm text-slate-500">
+                    AI analysis modules for {activeReportObj?.label?.toLowerCase()} are currently being upgraded. Please use the <strong>Blood Test</strong> tab to upload standard PDF reports.
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
 
+          {/* Analysis Results Sections */}
           <section className="grid gap-4 xl:grid-cols-3">
             {sections.map((section) => (
               <article key={section.title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -240,6 +317,7 @@ export default function PatientDashboard() {
             </div>
           )}
 
+          {/* Chatbot Section */}
           <section className="flex h-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
               <div className="flex items-center gap-4">
@@ -274,9 +352,9 @@ export default function PatientDashboard() {
           </section>
         </main>
 
+        {/* Right Sidebar */}
         <aside className="space-y-5 border-t border-slate-200 bg-slate-50 p-4 sm:p-6 lg:border-l lg:border-t-0">
           <BmiCalculator />
-
         </aside>
       </div>
     </div>
