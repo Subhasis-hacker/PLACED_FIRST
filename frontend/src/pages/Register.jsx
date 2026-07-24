@@ -6,7 +6,8 @@ export default function Register() {
   const [formData, setFormData] = useState({ 
     username: '', 
     email: '', 
-    password: '' 
+    password: '',
+    role: 'patient' // Default role added
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -21,12 +22,12 @@ export default function Register() {
     const username = formData.username.trim();
     const email = formData.email.trim().toLowerCase();
     const password = formData.password;
+    const role = formData.role;
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters long.');
       return;
     }
-
     if (!username) {
       setError('Username is required.');
       return;
@@ -34,10 +35,12 @@ export default function Register() {
 
     setSubmitting(true);
     try {
+      // Sending role along with standard user data
       await authAPI.registerUser({ 
         username, 
         email, 
-        password 
+        password,
+        role 
       });
       setSuccess(true);
       setTimeout(() => navigate('/login'), 2000);
@@ -57,6 +60,28 @@ export default function Register() {
         {success && <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl text-sm mb-4 font-bold">Account created! Redirecting...</div>}
 
         <form onSubmit={handleRegister} className="space-y-4">
+          
+          {/* ROLE SELECTOR ADDED HERE */}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">I AM A...</label>
+            <div className="grid grid-cols-3 gap-2">
+              {['patient', 'doctor'].map((roleOption) => (
+                <button
+                  type="button"
+                  key={roleOption}
+                  onClick={() => setFormData({ ...formData, role: roleOption })}
+                  className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
+                    formData.role === roleOption 
+                      ? 'bg-blue-50 border-blue-500 text-blue-600' 
+                      : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">USERNAME</label>
             <input 
@@ -80,7 +105,7 @@ export default function Register() {
           </div>
           
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">PASSWORD (MINIMUM 8 CHARACTERS)</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1">PASSWORD (MIN 8 CHARACTERS)</label>
             <input 
               type="password" 
               required 

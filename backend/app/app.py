@@ -1,16 +1,17 @@
+import json
 import logging
 from datetime import timedelta
 from typing import List
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+
 from app.db import schemas
 from app.db.db import Base, engine, get_db
-import json
-import json
 from app.db.schemas import (
     MedicalChatRequest,
     MedicalChatResponse,
@@ -19,7 +20,16 @@ from app.db.schemas import (
     UserCreate,
     UserResponse,
 )
-from app.models import UserModel, MedicalReport,ChatHistory,Doctor, BookingStatus,Patient,Booking
+from app.models import (
+    Booking,
+    BookingStatus,
+    ChatHistory,
+    Doctor,
+    MedicalReport,
+    Patient,
+    UserModel,
+)
+from app.services import doctor_auth
 from app.services.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -27,8 +37,6 @@ from app.services.auth import (
     get_current_active_user,
     get_password_hash,
 )
-from app.services import doctor_auth
-
 from app.services.ingest import analyze_pdf
 from app.services.mediadv import generate_medical_chat_reply
 
@@ -41,11 +49,18 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Base.metadata.create_all(bind=engine)
+# Automatically create all tables in Aiven MySQL
+Base.metadata.create_all(bind=engine)
+
+# Explicitly list allowed frontend origins
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,6 +72,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.warning("Invalid request for %s: %s", request.url.path, exc.errors())
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
+
+# --- Patient Authentication Routes ---
 
 @app.post("/register", response_model=UserResponse)
 def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
@@ -101,6 +118,8 @@ async def read_users_me(current_user: UserModel = Depends(get_current_active_use
     return current_user
 
 
+# --- Report Processing & AI Chat Routes ---
+
 @app.post("/upload", response_model=UploadReportResponse)
 async def upload_report(
     file: UploadFile = File(...),
@@ -110,7 +129,6 @@ async def upload_report(
 ):
     session_id, report, preview = await analyze_pdf(file, language)
     
-    # Save to db
     db_report = MedicalReport(
         user_id=current_user.id,
         session_id=session_id,
@@ -129,7 +147,7 @@ async def upload_report(
         "report": report,
         "raw_text_preview": preview,
     }
-    
+
     
 @app.post("/chat", response_model=MedicalChatResponse)
 async def chat_endpoint(
@@ -141,17 +159,8 @@ async def chat_endpoint(
     return {"reply": reply}
 
 
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # --- Doctor Authentication Routes ---
+
 @app.post("/api/doctor/register", response_model=schemas.DoctorCardResponse, status_code=status.HTTP_201_CREATED)
 def register_doctor(doctor_in: schemas.DoctorRegister, db: Session = Depends(get_db)):
     existing = db.query(Doctor).filter(Doctor.email == doctor_in.email).first()
@@ -162,6 +171,7 @@ def register_doctor(doctor_in: schemas.DoctorRegister, db: Session = Depends(get
         id=doc.id, name=doc.name, specialty=doc.specialty, city=doc.city, phone=doc.phone, average_rating=0.0
     )
 
+
 @app.post("/api/doctor/login")
 def login_doctor(credentials: schemas.DoctorLogin, db: Session = Depends(get_db)):
     doc = doctor_auth.authenticate_doctor(db, credentials.email, credentials.password)
@@ -169,18 +179,24 @@ def login_doctor(credentials: schemas.DoctorLogin, db: Session = Depends(get_db)
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     return {"message": "Login successful", "doctor_id": doc.id, "name": doc.name}
 
+
 # --- Patient Search & Sorting Route ---
+
 @app.get("/api/doctors/search", response_model=List[schemas.DoctorCardResponse])
 def search_doctors(specialty: str, city: str, db: Session = Depends(get_db)):
     """Search doctors by department & city sorted descending by rating."""
     return doctor_auth.search_doctors_by_specialty_and_city(db, specialty=specialty, city=city)
 
-# --- Slot Booking & Sequential Token Route ---
+
+# --- Slot Booking Route ---
+
 @app.post("/api/bookings/create", response_model=schemas.BookingResponse)
 def book_appointment(booking_in: schemas.BookingCreate, db: Session = Depends(get_db)):
     return doctor_auth.create_booking_with_token(db, booking_in)
 
+
 # --- Doctor Dashboard Routes ---
+
 @app.get("/api/doctor/{doctor_id}/analytics", response_model=schemas.DoctorAnalytics)
 def doctor_analytics(doctor_id: int, db: Session = Depends(get_db)):
     analytics = doctor_auth.get_doctor_analytics(db, doctor_id)
@@ -188,11 +204,14 @@ def doctor_analytics(doctor_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Doctor not found")
     return analytics
 
+
 @app.get("/api/doctor/{doctor_id}/queue", response_model=List[schemas.PatientInQueue])
 def todays_queue(doctor_id: int, db: Session = Depends(get_db)):
     return doctor_auth.get_todays_active_queue(db, doctor_id)
 
+
 # --- Lifecycle Cleanup / Cron Route ---
+
 @app.post("/api/cron/archive-bookings")
 def trigger_data_archiving(db: Session = Depends(get_db)):
     """Triggers soft-deletion/archiving of expired or rated bookings."""

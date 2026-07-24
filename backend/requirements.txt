@@ -55,3 +55,4 @@ bcrypt
 reportlab
 supabase
 psycopg2-binary
+pymysql
