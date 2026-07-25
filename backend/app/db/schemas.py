@@ -9,6 +9,7 @@ from app.models import BookingStatus
 class UserBase(BaseModel):
     username: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
+    role: str = Field(default="patient")
 
 
 class UserCreate(UserBase):
@@ -18,6 +19,7 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    role: str
 
     model_config = {"from_attributes": True}
 

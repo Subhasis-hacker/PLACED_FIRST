@@ -7,7 +7,10 @@ const API = axios.create({
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers = {
+      ...config.headers,
+      Authorization: `Bearer ${token}`,
+    };
   }
   return config;
 });
@@ -22,7 +25,10 @@ export const authAPI = {
     });
   },
   registerUser: (userData) => API.post('/register', userData),
-  getMe: () => API.get('/users/me/'),
+  getMe: (tokenOverride) => {
+    const headers = tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : {};
+    return API.get('/users/me', { headers });
+  },
 };
 
 export const medicalAPI = {
@@ -39,3 +45,4 @@ export const medicalAPI = {
   ),
 };
 
+export default API;

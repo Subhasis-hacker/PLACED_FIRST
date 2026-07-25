@@ -2,8 +2,15 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const normalizeRole = (value) => {
+  if (!value) return null;
+  return String(value).trim().toLowerCase();
+};
+
 export default function ProtectedRoute({ children, allowedRole }) {
   const { user, role, loading } = useAuth();
+  const normalizedRole = normalizeRole(role);
+  const normalizedAllowedRole = normalizeRole(allowedRole);
 
   if (loading) {
     return (
@@ -14,8 +21,8 @@ export default function ProtectedRoute({ children, allowedRole }) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
-  if (allowedRole && role !== allowedRole) {
-    return <Navigate to={role === 'doctor' ? '/doctor-workspace' : '/dashboard'} replace />;
+  if (normalizedAllowedRole && normalizedRole !== normalizedAllowedRole) {
+    return <Navigate to={normalizedRole === 'doctor' ? '/doctor-workspace' : '/dashboard'} replace />;
   }
 
   return children;

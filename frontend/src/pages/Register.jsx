@@ -3,11 +3,11 @@ import { useNavigate, Link } from 'react-router-dom';
 import { authAPI } from '../api/client';
 
 export default function Register() {
-  const [formData, setFormData] = useState({ 
-    username: '', 
-    email: '', 
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
     password: '',
-    role: 'patient' // Default role added
+    role: 'patient',
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -22,7 +22,7 @@ export default function Register() {
     const username = formData.username.trim();
     const email = formData.email.trim().toLowerCase();
     const password = formData.password;
-    const role = formData.role;
+    const role = formData.role.trim().toLowerCase();
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters long.');
@@ -36,11 +36,11 @@ export default function Register() {
     setSubmitting(true);
     try {
       // Sending role along with standard user data
-      await authAPI.registerUser({ 
-        username, 
-        email, 
+      await authAPI.registerUser({
+        username,
+        email,
         password,
-        role 
+        role,
       });
       setSuccess(true);
       setTimeout(() => navigate('/login'), 2000);

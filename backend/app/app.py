@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import schemas
 from app.db.db import Base, engine, get_db
+from sqlalchemy import inspect, text
 from app.db.schemas import (
     MedicalChatRequest,
     MedicalChatResponse,
@@ -52,6 +53,14 @@ app = FastAPI(
 # Automatically create all tables in Aiven MySQL
 Base.metadata.create_all(bind=engine)
 
+# Keep compatibility with existing databases that were created before the role column existed.
+inspector = inspect(engine)
+if 'users' in inspector.get_table_names():
+    user_columns = {column['name'] for column in inspector.get_columns('users')}
+    if 'role' not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'patient' NOT NULL"))
+
 # Explicitly list allowed frontend origins
 origins = [
     "http://localhost:3000",
@@ -85,10 +94,15 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
     if db.query(UserModel).filter(UserModel.email == normalized_email).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
+    normalized_role = (getattr(user_in, 'role', 'patient') or 'patient').strip().lower()
+    if normalized_role not in {"patient", "doctor"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role must be either patient or doctor")
+
     new_user = UserModel(
         username=normalized_username,
         email=normalized_email,
         hashed_password=get_password_hash(user_in.password),
+        role=normalized_role,
     )
     db.add(new_user)
     db.commit()
@@ -109,11 +123,15 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
+    user_role = getattr(user, 'role', 'patient') or 'patient'
+    access_token = create_access_token(
+        data={"sub": user.email, "role": user_role},
+        expires_delta=access_token_expires,
+    )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.get("/users/me/", response_model=UserResponse)
+@app.get("/users/me", response_model=UserResponse)
 async def read_users_me(current_user: UserModel = Depends(get_current_active_user)):
     return current_user
 

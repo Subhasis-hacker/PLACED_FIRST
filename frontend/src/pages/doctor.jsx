@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { UserCheck, Star, Users, MapPin, Phone, Mail, Clock, ShieldCheck, LogOut, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { motion } from 'motion/react';
+import { Star, Users, MapPin, Mail, Clock, ShieldCheck, LogOut, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,9 +16,10 @@ export default function DoctorWorkspace({ doctorId: propDoctorId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
       const token = localStorage.getItem('token');
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -27,7 +28,7 @@ export default function DoctorWorkspace({ doctorId: propDoctorId }) {
         fetch(`http://localhost:8000/api/doctor/${doctorId}/analytics`, { headers }),
         fetch(`http://localhost:8000/api/doctor/${doctorId}/queue`, { headers })
       ]);
-      
+
       if (!resAnalytics.ok || !resQueue.ok) {
         throw new Error('Failed to load server data');
       }
@@ -38,16 +39,15 @@ export default function DoctorWorkspace({ doctorId: propDoctorId }) {
       setAnalytics(analyticsData);
       setQueue(queueData);
     } catch (err) {
-      console.error("Error fetching dashboard data:", err);
-      setError("Unable to connect to backend server or load queue.");
+      setError('Unable to connect to backend server or load queue.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [doctorId]);
 
   useEffect(() => {
     fetchDashboardData();
-  }, [doctorId]);
+  }, [fetchDashboardData]);
 
   const handleLogout = () => {
     logout();

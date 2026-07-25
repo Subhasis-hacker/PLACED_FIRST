@@ -30,12 +30,16 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
-def get_user_by_useremail(db: Session, email: EmailStr) -> UserModel | None:
-    return db.query(UserModel).filter(UserModel.email == email).first()
+def get_user_by_identifier(db: Session, identifier: str) -> UserModel | None:
+    normalized_identifier = identifier.strip().lower()
+    user = db.query(UserModel).filter(UserModel.email == normalized_identifier).first()
+    if user is None:
+        user = db.query(UserModel).filter(UserModel.username == normalized_identifier).first()
+    return user
 
 
-def authenticate_user(db: Session, email: EmailStr, password: str) -> UserModel | bool:
-    user = get_user_by_useremail(db, email=email)
+def authenticate_user(db: Session, email_or_username: str, password: str) -> UserModel | bool:
+    user = get_user_by_identifier(db, email_or_username)
     if not user or not verify_password(password, user.hashed_password):
         return False
     return user
@@ -62,7 +66,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     except JWTError:
         raise credentials_exception
 
-    user = get_user_by_useremail(db, email=email)
+    user = get_user_by_identifier(db, email)
     if user is None:
         raise credentials_exception
     return user

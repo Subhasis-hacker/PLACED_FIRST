@@ -9,7 +9,7 @@ import Register from './pages/Register';
 
 // Your page components:
 import PatientDashboard from './pages/PatientDashboard';
-import DoctorWorkspace from './pages/Doctor';
+import DoctorWorkspace from './pages/doctor';
 
 export default function App() {
   return (

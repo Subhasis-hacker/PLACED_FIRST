@@ -3,11 +3,16 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../api/client';
 
+const normalizeRole = (value) => {
+  if (!value) return null;
+  return String(value).trim().toLowerCase();
+};
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [roleTab, setRoleTab] = useState('patient'); // 'patient' or 'doctor'
+  const [roleTab, setRoleTab] = useState('patient');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -20,35 +25,24 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      // 1. Authenticate user credentials
       const res = await authAPI.loginUser(email, password);
       const token = res.data.access_token;
-      
-      // 2. Set token in local storage for interceptor request
-      localStorage.setItem('token', token);
+      const userRes = await authAPI.getMe(token);
+      const actualRole = normalizeRole(userRes.data?.role || roleTab);
 
-      // 3. Fetch user profile from database
-      const userRes = await authAPI.getMe();
-      const actualRole = userRes.data.role || roleTab; 
-
-      // 4. Role Verification Safeguard
       if (roleTab === 'doctor' && actualRole !== 'doctor') {
         localStorage.removeItem('token');
-        setError('This account is not registered as a Doctor. Please select Patient login.');
-        setIsLoading(false);
+        setError('This account is not registered as a doctor. Please select patient login.');
         return;
       }
 
-      // 5. Update Auth Context
       login(token, actualRole, userRes.data);
 
-      // 6. Dynamic Navigation based on role
       if (actualRole === 'doctor') {
         navigate('/doctor-workspace');
       } else {
         navigate('/dashboard');
       }
-      
     } catch (err) {
       localStorage.removeItem('token');
       setError(err.response?.data?.detail || 'Invalid credentials provided. Please try again.');
