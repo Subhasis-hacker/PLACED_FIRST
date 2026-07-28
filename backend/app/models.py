@@ -31,15 +31,16 @@ class ChatHistory(Base):
 
 class MedicalReport(Base):
     __tablename__ = "medical_reports"
-
+    
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    session_id = Column(String(64), nullable=True, index=True)
-    original_text = Column(Text, nullable=True)
-    structured_data = Column(Text, nullable=True) # Stored as JSON string
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
+    
+    # FIX: Change "users.id" to "patients.id"
+    user_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE")) 
+    
+    session_id = Column(String(100))
+    original_text = Column(Text)
+    structured_data = Column(Text)
+    created_at = Column(DateTime, default=func.now())
 
 
 ### doctor
@@ -52,59 +53,57 @@ class BookingStatus(str, enum.Enum):
 
 class Doctor(Base):
     __tablename__ = "doctors"
-
+    
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    phone = Column(String(50), nullable=False)
-    city = Column(String(100), nullable=False, index=True)
-    specialty = Column(String(100), nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Relationships
-    bookings = relationship("Booking", back_populates="doctor")
-    ratings = relationship("Rating", back_populates="doctor")
-
-    # Composite Index for high-performance searching & sorting by city + specialty
-    __table_args__ = (
-        Index("idx_doctor_specialty_city", "specialty", "city"),
-    )
-
+    name = Column(String(100), nullable=False)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    specialty = Column(String(100))
+    city = Column(String(100))
+    phone = Column(String(20))
+    average_rating = Column(Integer, default=0)
+    
+    # Existing booking relationship
+    bookings = relationship("Booking", back_populates="doctor", cascade="all, delete-orphan")
+    
+    # FIX: Add the missing ratings relationship here!
+    ratings = relationship("Rating", back_populates="doctor", cascade="all, delete-orphan")
+    
+    
 class Patient(Base):
-    """Reflects the existing Patient table in your Supabase DB."""
     __tablename__ = "patients"
-
+    
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    city = Column(String(100), nullable=False)
-
-    bookings = relationship("Booking", back_populates="patient")
-
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    
+    # FIX: Add the missing column to the database schema
+    is_active = Column(Boolean, default=True)
+    
+    bookings = relationship("Booking", back_populates="patient", cascade="all, delete-orphan")
+    
 class Booking(Base):
     __tablename__ = "bookings"
-
+    
     id = Column(Integer, primary_key=True, index=True)
-    doctor_id = Column(Integer, ForeignKey("doctors.id", ondelete="CASCADE"), nullable=False, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
-    booking_date = Column(Date, nullable=False, index=True)
-    time_slot = Column(String(50), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    doctor_id = Column(Integer, ForeignKey("doctors.id", ondelete="CASCADE"), nullable=False)
+    
+    booking_date = Column(Date, nullable=False)
+    time_slot = Column(String(20), nullable=False)
     token_number = Column(Integer, nullable=False)
-    status = Column(Enum(BookingStatus), default=BookingStatus.ACTIVE, nullable=False)
-    is_archived = Column(Boolean, default=False, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Relationships
-    doctor = relationship("Doctor", back_populates="bookings")
+    status = Column(String(20), default="ACTIVE")
+    is_archived = Column(Boolean, default=False)
+    
+    # Existing relationships
     patient = relationship("Patient", back_populates="bookings")
-    rating = relationship("Rating", back_populates="booking", uselist=False)
-
-    __table_args__ = (
-        Index("idx_booking_doctor_date", "doctor_id", "booking_date"),
-    )
-
+    doctor = relationship("Doctor", back_populates="bookings")
+    
+    # FIX: Add the missing rating relationship here!
+    # (uselist=False means one booking has exactly one rating)
+    rating = relationship("Rating", back_populates="booking", uselist=False, cascade="all, delete-orphan")
+    
 class Rating(Base):
     __tablename__ = "ratings"
 

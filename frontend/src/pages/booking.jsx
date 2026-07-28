@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Star, MapPin, Calendar, Clock, CheckCircle2, User, ChevronRight } from 'lucide-react';
 
+// Import the API client
+import { bookingAPI } from '../api/client';
+
 const SPECIALTIES = ["OPD", "General Surgery", "Cardiology", "Neurology", "Oncology"];
 const TIME_SLOTS = ["09:00 AM", "10:30 AM", "02:00 PM", "03:30 PM", "05:00 PM"];
 
@@ -15,15 +18,15 @@ export default function BookingFlow({ patientId = 1 }) {
   const [selectedSlot, setSelectedSlot] = useState("");
   const [bookingConfirmed, setBookingConfirmed] = useState(null);
 
-  // 1. Query backend for specialty + city sorted by rating DESC
+  // 1. Query backend for specialty + city sorted by rating DESC via API client
   const handleSearch = async (e) => {
     e?.preventDefault();
     if (!cityInput) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/doctors/search?specialty=${encodeURIComponent(selectedSpecialty)}&city=${encodeURIComponent(cityInput)}`);
-      const data = await res.json();
-      setDoctors(data);
+      // Using Axios client instead of raw fetch
+      const res = await bookingAPI.searchDoctors(selectedSpecialty, cityInput);
+      setDoctors(res.data);
     } catch (err) {
       console.error("Failed to fetch doctors:", err);
     } finally {
@@ -31,22 +34,20 @@ export default function BookingFlow({ patientId = 1 }) {
     }
   };
 
-  // 2. Submit booking & receive atomic sequential token number
+  // 2. Submit booking & receive atomic sequential token number via API client
   const handleBookSlot = async () => {
     if (!selectedDoctor || !selectedSlot) return;
     try {
-      const res = await fetch("http://localhost:8000/api/bookings/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          doctor_id: selectedDoctor.id,
-          patient_id: patientId,
-          booking_date: new Date().toISOString().split('T')[0],
-          time_slot: selectedSlot
-        })
-      });
-      const data = await res.json();
-      setBookingConfirmed(data);
+      const payload = {
+        doctor_id: selectedDoctor.id,
+        patient_id: patientId,
+        booking_date: new Date().toISOString().split('T')[0],
+        time_slot: selectedSlot
+      };
+      
+      // Using Axios client instead of raw fetch
+      const res = await bookingAPI.bookAppointment(payload);
+      setBookingConfirmed(res.data);
     } catch (err) {
       console.error("Booking failed:", err);
     }

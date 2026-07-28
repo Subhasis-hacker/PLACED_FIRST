@@ -9,7 +9,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.db.db import get_db
-from app.models import UserModel
+from app.models import UserModel,Patient
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -37,10 +37,15 @@ def get_user_by_identifier(db: Session, identifier: str) -> UserModel | None:
         user = db.query(UserModel).filter(UserModel.username == normalized_identifier).first()
     return user
 
-
-def authenticate_user(db: Session, email_or_username: str, password: str) -> UserModel | bool:
-    user = get_user_by_identifier(db, email_or_username)
-    if not user or not verify_password(password, user.hashed_password):
+def authenticate_user(db: Session, username_or_email: str, password: str):
+    # Authenticate against the Patient table
+    user = db.query(Patient).filter(
+        (Patient.username == username_or_email) | (Patient.email == username_or_email)
+    ).first()
+    
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
         return False
     return user
 
@@ -52,31 +57,36 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> UserModel:
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: EmailStr | None = payload.get("sub")
+        email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-
-    user = get_user_by_identifier(db, email)
+        
+    # FIX: Query the Patient table instead of UserModel!
+    user = db.query(Patient).filter(Patient.email == email).first()
+    
     if user is None:
         raise credentials_exception
+        
+    # Dynamically attach the role so the frontend knows this is a patient
+    setattr(user, 'role', 'patient')
+    
     return user
 
-
-async def get_current_active_user(current_user: UserModel = Depends(get_current_user)) -> UserModel:
-    if not current_user.is_active:
+async def get_current_active_user(current_user: Patient = Depends(get_current_user)):
+    # Check against the is_active column we added earlier
+    if not getattr(current_user, "is_active", True):
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
-
-
 
 ### doctor auth

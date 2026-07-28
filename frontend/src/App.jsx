@@ -1,13 +1,11 @@
-// App.jsx
 import React from 'react';
 import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
+// --- Page Components ---
 import Login from './pages/Login';
 import Register from './pages/Register';
-
-// Your page components:
 import PatientDashboard from './pages/PatientDashboard';
 import DoctorWorkspace from './pages/doctor';
 
@@ -16,10 +14,14 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* Public Authentication Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
-          {/* Patient and Student Route */}
+          {/* 
+            Patient Route 
+            Includes: AI Reports, Triage Chatbot, Doctor Search, and Slot Booking 
+          */}
           <Route
             path="/dashboard"
             element={
@@ -28,9 +30,11 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* You can also do allowedRole="student" if they have a separate dashboard */}
 
-          {/* Doctor Route */}
+          {/* 
+            Doctor Route 
+            Includes: Real-time Analytics and Active Patient Queue 
+          */}
           <Route
             path="/doctor-workspace"
             element={
@@ -40,6 +44,7 @@ export default function App() {
             }
           />
 
+          {/* Fallback routing for unknown paths */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>

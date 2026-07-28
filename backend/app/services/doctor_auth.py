@@ -5,22 +5,22 @@ import hashlib
 from app import models
 from app.db import schemas
 from app.db.db import get_db
+from app.models import Doctor
+from app.services.auth import get_password_hash
 
-
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+# def hash_password(password: str) -> str:
+#     return hashlib.sha256(password.encode()).hexdigest()
 
 # 1. Doctor Registration & Authentication
 def create_doctor(db: Session, doctor_in: schemas.DoctorRegister):
-    hashed_pwd = hash_password(doctor_in.password)
+    hashed_pwd = get_password_hash(doctor_in.password)
     db_doctor = models.Doctor(
         name=doctor_in.name,
         email=doctor_in.email,
+        hashed_password=hashed_pwd,
         phone=doctor_in.phone,
         city=doctor_in.city.lower(),  # Store lowercase for case-insensitive matching
-        specialty=doctor_in.specialty,
-        password_hash=hashed_pwd
+        specialty=doctor_in.specialty
     )
     db.add(db_doctor)
     db.commit()
@@ -28,37 +28,22 @@ def create_doctor(db: Session, doctor_in: schemas.DoctorRegister):
     return db_doctor
 
 def authenticate_doctor(db: Session, email: str, password: str):
-    hashed_pwd = hash_password(password)
+    hashed_password = get_password_hash(password)
     return db.query(models.Doctor).filter(
         models.Doctor.email == email,
-        models.Doctor.password_hash == hashed_pwd
+        models.Doctor.hashed_password == hashed_password
     ).first()
 
 # 2. Patient Search & Sorting Query
 def search_doctors_by_specialty_and_city(db: Session, specialty: str, city: str):
     """
-    Executes a SQL JOIN with aggregations to calculate average ratings dynamically.
-    Sorts descending by average star rating. Default to 0.0 for doctors with no ratings yet.
+    Case-insensitive search for doctors by specialty and city, 
+    sorted by highest rating first.
     """
-    results = (
-        db.query(
-            models.Doctor.id,
-            models.Doctor.name,
-            models.Doctor.specialty,
-            models.Doctor.city,
-            models.Doctor.phone,
-            func.coalesce(func.avg(models.Rating.stars), 0.0).label("average_rating")
-        )
-        .outerjoin(models.Rating, models.Doctor.id == models.Rating.doctor_id)
-        .filter(
-            models.Doctor.specialty.ilike(specialty),
-            models.Doctor.city.ilike(city),
-            models.Doctor.is_active == True
-        )
-        .group_by(models.Doctor.id)
-        .order_by(func.coalesce(func.avg(models.Rating.stars), 0.0).desc())
-        .all()
-    )
+    return db.query(Doctor).filter(
+        Doctor.specialty.ilike(f"%{specialty}%"),
+        Doctor.city.ilike(f"%{city}%")
+    ).order_by(Doctor.average_rating.desc()).all()
 
     return [
         schemas.DoctorCardResponse(

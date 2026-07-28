@@ -89,25 +89,25 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
     normalized_email = user_in.email.lower().strip()
     normalized_username = user_in.username.strip()
 
-    if db.query(UserModel).filter(UserModel.username == normalized_username).first():
+    # MUST QUERY THE NEW Patient TABLE
+    if db.query(Patient).filter(Patient.username == normalized_username).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already registered")
-    if db.query(UserModel).filter(UserModel.email == normalized_email).first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-
-    normalized_role = (getattr(user_in, 'role', 'patient') or 'patient').strip().lower()
-    if normalized_role not in {"patient", "doctor"}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role must be either patient or doctor")
-
-    new_user = UserModel(
+    
+    # MUST SAVE TO THE NEW Patient TABLE
+    new_patient = Patient(
         username=normalized_username,
         email=normalized_email,
         hashed_password=get_password_hash(user_in.password),
-        role=normalized_role,
     )
-    db.add(new_user)
+    db.add(new_patient)
     db.commit()
-    db.refresh(new_user)
-    return new_user
+    db.refresh(new_patient)
+    
+    # FIX: Manually attach the missing fields required by UserResponse
+    setattr(new_patient, 'role', 'patient')
+    setattr(new_patient, 'is_active', True)  # <-- Add this line
+    
+    return new_patient
 
 
 @app.post("/token", response_model=Token)
@@ -198,6 +198,8 @@ def login_doctor(credentials: schemas.DoctorLogin, db: Session = Depends(get_db)
     return {"message": "Login successful", "doctor_id": doc.id, "name": doc.name}
 
 
+
+
 # --- Patient Search & Sorting Route ---
 
 @app.get("/api/doctors/search", response_model=List[schemas.DoctorCardResponse])
@@ -235,3 +237,5 @@ def trigger_data_archiving(db: Session = Depends(get_db)):
     """Triggers soft-deletion/archiving of expired or rated bookings."""
     result = doctor_auth.archive_expired_or_rated_bookings(db)
     return {"status": "success", "archived_stats": result}
+
+

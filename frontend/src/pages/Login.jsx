@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { authAPI } from '../api/client';
-
-const normalizeRole = (value) => {
-  if (!value) return null;
-  return String(value).trim().toLowerCase();
-};
+import { authAPI, doctorAuthAPI } from '../api/client';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -25,27 +20,32 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const res = await authAPI.loginUser(email, password);
-      const token = res.data.access_token;
-      const userRes = await authAPI.getMe(token);
-      const actualRole = normalizeRole(userRes.data?.role || roleTab);
-
-      if (roleTab === 'doctor' && actualRole !== 'doctor') {
-        localStorage.removeItem('token');
-        setError('This account is not registered as a doctor. Please select patient login.');
-        return;
-      }
-
-      login(token, actualRole, userRes.data);
-
-      if (actualRole === 'doctor') {
+      if (roleTab === 'doctor') {
+        // --- DOCTOR LOGIN FLOW ---
+        const res = await doctorAuthAPI.loginDoctor({ email, password });
+        
+        // The doctor login endpoint doesn't return a standard JWT access_token.
+        // We pass a mock token to the AuthContext to satisfy standard session checks, 
+        // along with the actual doctor data returned from the backend.
+        login('doctor-token', 'doctor', res.data);
         navigate('/doctor-workspace');
+        
       } else {
+        // --- PATIENT LOGIN FLOW ---
+        const res = await authAPI.loginUser(email, password);
+        const token = res.data.access_token;
+        
+        // Fetch the user's profile details using the token
+        const userRes = await authAPI.getMe(token);
+        
+        login(token, 'patient', userRes.data);
         navigate('/dashboard');
       }
     } catch (err) {
       localStorage.removeItem('token');
-      setError(err.response?.data?.detail || 'Invalid credentials provided. Please try again.');
+      // Extract specific detail from FastAPI, fallback to generic message
+      const errorMessage = err.response?.data?.detail || 'Invalid credentials provided. Please try again.';
+      setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage));
     } finally {
       setIsLoading(false);
     }

@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { medicalAPI } from '../api/client';
+import { medicalAPI, bookingAPI } from '../api/client';
 import BmiCalculator from '../components/BmiCalculator';
+import { Search, Star, MapPin, Clock, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const languages = ['English', 'Hindi', 'Odia'];
+const SPECIALTIES = ["OPD", "General Surgery", "Cardiology", "Neurology", "Oncology"];
+const TIME_SLOTS = ["09:00 AM", "10:30 AM", "02:00 PM", "03:30 PM", "05:00 PM"];
 
 const initialAssistantMessage = {
   role: 'assistant',
@@ -105,6 +109,11 @@ function getErrorMessage(error, fallback) {
 
 export default function PatientDashboard() {
   const { logout, user } = useAuth();
+  
+  // Tab State
+  const [activeTab, setActiveTab] = useState('reports'); // 'reports' or 'consultation'
+
+  // --- Reports & AI State ---
   const [file, setFile] = useState(null);
   const [language, setLanguage] = useState('English');
   const [uploading, setUploading] = useState(false);
@@ -114,6 +123,16 @@ export default function PatientDashboard() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([initialAssistantMessage]);
   const [selectedReportType, setSelectedReportType] = useState('blood_test');
+
+  // --- Consultation & Booking State ---
+  const [searchSpecialty, setSearchSpecialty] = useState("Cardiology");
+  const [searchCity, setSearchCity] = useState("");
+  const [doctors, setDoctors] = useState([]);
+  const [searchingDocs, setSearchingDocs] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState("");
+  const [bookingConfirmed, setBookingConfirmed] = useState(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
 
   const sections = useMemo(() => [
     { title: 'Precautions', body: activeReport?.precautions?.join('\n- ') || 'No specific details found in this section yet.' },
@@ -126,6 +145,7 @@ export default function PatientDashboard() {
     window.setTimeout(() => setToast(null), 3600);
   };
 
+  // --- Handlers: Reports & Chat ---
   const handleUpload = async (event) => {
     event.preventDefault();
     if (!file) {
@@ -181,6 +201,61 @@ export default function PatientDashboard() {
     }
   };
 
+  // --- Handlers: Doctor Search & Booking ---
+  const handleSearchDoctors = async (e) => {
+    e?.preventDefault();
+    if (!searchCity) {
+      notify("Please enter a city to search.", "error");
+      return;
+    }
+    
+    setSearchingDocs(true);
+    setSelectedDoctor(null);
+    setSelectedSlot("");
+    
+    try {
+      const res = await bookingAPI.searchDoctors(searchSpecialty, searchCity);
+      setDoctors(res.data);
+      if (res.data.length === 0) notify("No doctors found in this area.", "error");
+    } catch (err) {
+      notify("Failed to fetch doctors. Please try again.", "error");
+    } finally {
+      setSearchingDocs(false);
+    }
+  };
+
+  const handleBookSlot = async () => {
+  // 1. Guard against missing selections
+  if (!selectedDoctor || !selectedSlot) return;
+  
+  // 2. Validate user session (prevents booking with missing/invalid patient_id)
+  if (!user?.id) {
+    notify("User session invalid. Please log out and log back in.", "error");
+    return;
+  }
+
+  setBookingLoading(true);
+
+  try {
+    const payload = {
+      doctor_id: selectedDoctor.id,
+      patient_id: user.id,
+      booking_date: new Date().toISOString().split('T')[0],
+      time_slot: selectedSlot
+    };
+    
+    const res = await bookingAPI.bookAppointment(payload);
+    
+    // 3. Confirm booking and notify user
+    setBookingConfirmed(res.data);
+    notify("Appointment booked successfully!", "success");
+  } catch (err) {
+    notify("Booking failed. Slot may be taken.", "error");
+  } finally {
+    setBookingLoading(false);
+  }
+};
+
   const activeReportObj = REPORT_TYPES.find(t => t.id === selectedReportType);
 
   return (
@@ -196,19 +271,29 @@ export default function PatientDashboard() {
               <h1 className="mt-2 text-2xl font-black text-slate-950">Patient Care</h1>
             </div>
             <nav className="space-y-2">
-              <button className="flex w-full items-center gap-3 rounded-lg bg-blue-50 px-4 py-3 text-left text-sm font-bold text-blue-700">
+              <button 
+                onClick={() => setActiveTab('reports')}
+                className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm transition-colors ${
+                  activeTab === 'reports' ? 'bg-blue-50 font-bold text-blue-700' : 'font-semibold text-slate-500 hover:bg-slate-50'
+                }`}
+              >
                 <span>01</span>
-                Consultation
+                AI Reports & Triage
               </button>
-              <button className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-500">
+              <button 
+                onClick={() => setActiveTab('consultation')}
+                className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm transition-colors ${
+                  activeTab === 'consultation' ? 'bg-blue-50 font-bold text-blue-700' : 'font-semibold text-slate-500 hover:bg-slate-50'
+                }`}
+              >
                 <span>02</span>
-                Reports
+                Book Consultation
               </button>
             </nav>
           </div>
 
           <div className="mt-8 border-t border-slate-100 pt-5">
-            <div className="mb-4 rounded-lg bg-slate-50 p-4">
+            <div className="mb-4 rounded-lg bg-slate-50 p-4 border border-slate-100">
               <p className="truncate text-sm font-black text-slate-900">{user?.username || 'Patient'}</p>
               <p className="truncate text-xs font-medium text-slate-500">{user?.email || 'Secure patient account'}</p>
             </div>
@@ -218,144 +303,353 @@ export default function PatientDashboard() {
           </div>
         </aside>
 
-        {/* Main Content */}
+        {/* Main Content Area */}
         <main className="min-w-0 space-y-6 p-4 sm:p-6 xl:p-8">
           
-          {/* Top Section: Report Type Selection & Upload */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between mb-6">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">AI triage intake</p>
-                <h2 className="mt-1 text-2xl font-black text-slate-950">Analyze Medical Report</h2>
-              </div>
-              <div className="flex flex-wrap gap-2 rounded-lg bg-slate-100 p-1">
-                {languages.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setLanguage(item)}
-                    className={`rounded-md px-4 py-2 text-sm font-bold transition ${language === item ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Report Type Tabs */}
-            <div className="mb-6 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {REPORT_TYPES.map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => setSelectedReportType(type.id)}
-                  className={`flex min-w-max items-center gap-2.5 rounded-xl border px-5 py-3 text-sm font-bold transition-all ${
-                    selectedReportType === type.id
-                      ? 'border-blue-600 bg-blue-600 text-white shadow-md'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50'
-                  }`}
-                >
-                  <type.icon className={`h-5 w-5 ${selectedReportType === type.id ? 'text-blue-200' : 'text-slate-400'}`} />
-                  {type.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Dynamic Upload Area */}
-            <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-              {selectedReportType === 'blood_test' ? (
-                <form onSubmit={handleUpload} className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                  <input
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    onChange={(event) => setFile(event.target.files?.[0] || null)}
-                    className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-blue-700 focus:border-blue-500 focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={uploading}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-8 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {uploading && <Spinner />}
-                    {uploading ? 'Analyzing...' : 'Analyze PDF'}
-                  </button>
-                </form>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-10 text-center">
-                  <div className="mb-3 rounded-full bg-white p-4 shadow-sm border border-slate-100">
-                     {activeReportObj && <activeReportObj.icon className="h-8 w-8 text-slate-300" />}
+          {/* View 1: AI Reports & Chat */}
+          {activeTab === 'reports' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+              {/* Top Section: Report Type Selection & Upload */}
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between mb-6">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">AI triage intake</p>
+                    <h2 className="mt-1 text-2xl font-black text-slate-950">Analyze Medical Report</h2>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900">Upload {activeReportObj?.label}</h3>
-                  <p className="mt-2 max-w-sm text-sm text-slate-500">
-                    AI analysis modules for {activeReportObj?.label?.toLowerCase()} are currently being upgraded. Please use the <strong>Blood Test</strong> tab to upload standard PDF reports.
-                  </p>
+                  <div className="flex flex-wrap gap-2 rounded-lg bg-slate-100 p-1 border border-slate-200">
+                    {languages.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setLanguage(item)}
+                        className={`rounded-md px-4 py-2 text-sm font-bold transition ${language === item ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Report Type Tabs */}
+                <div className="mb-6 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                  {REPORT_TYPES.map((type) => (
+                    <button
+                      key={type.id}
+                      onClick={() => setSelectedReportType(type.id)}
+                      className={`flex min-w-max items-center gap-2.5 rounded-xl border px-5 py-3 text-sm font-bold transition-all ${
+                        selectedReportType === type.id
+                          ? 'border-blue-600 bg-blue-600 text-white shadow-md'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50'
+                      }`}
+                    >
+                      <type.icon className={`h-5 w-5 ${selectedReportType === type.id ? 'text-blue-200' : 'text-slate-400'}`} />
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Dynamic Upload Area */}
+                <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
+                  {selectedReportType === 'blood_test' ? (
+                    <form onSubmit={handleUpload} className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        onChange={(event) => setFile(event.target.files?.[0] || null)}
+                        className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-blue-700 focus:border-blue-500 focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={uploading}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-8 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {uploading && <Spinner />}
+                        {uploading ? 'Analyzing...' : 'Analyze PDF'}
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <div className="mb-3 rounded-full bg-white p-4 shadow-sm border border-slate-100">
+                         {activeReportObj && <activeReportObj.icon className="h-8 w-8 text-slate-300" />}
+                      </div>
+                      <h3 className="text-base font-bold text-slate-900">Upload {activeReportObj?.label}</h3>
+                      <p className="mt-2 max-w-sm text-sm text-slate-500">
+                        AI analysis modules for {activeReportObj?.label?.toLowerCase()} are currently being upgraded. Please use the <strong>Blood Test</strong> tab to upload standard PDF reports.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* Analysis Results Sections */}
+              <section className="grid gap-4 xl:grid-cols-3">
+                {sections.map((section) => (
+                  <article key={section.title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                    <h3 className="text-sm font-black text-slate-950">{section.title}</h3>
+                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                      {activeReport ? `- ${section.body}` : section.body}
+                    </div>
+                  </article>
+                ))}
+              </section>
+
+              {activeReport?.medical_disclaimer && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <span className="text-amber-600 font-bold mt-0.5">!</span>
+                    <div>
+                      <h3 className="text-sm font-black text-amber-900">Medical Disclaimer</h3>
+                      <p className="mt-1 text-sm leading-6 text-amber-800">{activeReport.medical_disclaimer}</p>
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
-          </section>
 
-          {/* Analysis Results Sections */}
-          <section className="grid gap-4 xl:grid-cols-3">
-            {sections.map((section) => (
-              <article key={section.title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-black text-slate-950">{section.title}</h3>
-                <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-                  {activeReport ? `- ${section.body}` : section.body}
+              {/* Chatbot Section */}
+              <section className="flex h-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
+                  <div className="flex items-center gap-4">
+                    <MediDoll />
+                    <div>
+                      <h3 className="text-sm font-black text-slate-950">Medi Clinical Chatbot</h3>
+                      <p className="text-xs font-medium text-slate-500">Formal one-paragraph responses in {language}</p>
+                    </div>
+                  </div>
+                  {chatLoading && <Spinner className="border-blue-600" />}
                 </div>
-              </article>
-            ))}
-          </section>
-
-          {activeReport?.medical_disclaimer && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <span className="text-amber-600 font-bold mt-0.5">!</span>
-                <div>
-                  <h3 className="text-sm font-black text-amber-900">Medical Disclaimer</h3>
-                  <p className="mt-1 text-sm leading-6 text-amber-800">{activeReport.medical_disclaimer}</p>
+                <div className="flex-1 space-y-4 overflow-y-auto p-5">
+                  {chatHistory.map((message, index) => (
+                    <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[86%] rounded-lg px-4 py-3 text-sm leading-6 shadow-sm ${message.role === 'user' ? 'bg-blue-600 text-white' : 'border border-slate-100 bg-slate-50 text-slate-700'}`}>
+                        <p>{cleanChatText(message.content)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            </div>
+                <form onSubmit={handleSendMessage} className="grid gap-2 border-t border-slate-200 p-4 sm:grid-cols-[1fr_auto]">
+                  <input
+                    value={chatMessage}
+                    onChange={(event) => setChatMessage(event.target.value)}
+                    placeholder="Ask a question about your report"
+                    className="rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                  <button disabled={chatLoading} className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-60">
+                    Send
+                  </button>
+                </form>
+              </section>
+            </motion.div>
           )}
 
-          {/* Chatbot Section */}
-          <section className="flex h-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <div className="flex items-center gap-4">
-                <MediDoll />
+          {/* View 2: Doctor Search & Booking (Consultation Tab) */}
+          {activeTab === 'consultation' && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              
+              {/* Header */}
+              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
                 <div>
-                  <h3 className="text-sm font-black text-slate-950">Medi Clinical Chatbot</h3>
-                  <p className="text-xs font-medium text-slate-500">Formal one-paragraph responses in {language}</p>
+                  <h2 className="text-2xl font-black text-slate-950">Book an Appointment</h2>
+                  <p className="text-sm text-slate-500 mt-1">Search for specialists in your area and reserve a time slot instantly.</p>
                 </div>
               </div>
-              {chatLoading && <Spinner className="border-blue-600" />}
-            </div>
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
-              {chatHistory.map((message, index) => (
-                <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[86%] rounded-lg px-4 py-3 text-sm leading-6 shadow-sm ${message.role === 'user' ? 'bg-blue-600 text-white' : 'border border-slate-100 bg-slate-50 text-slate-700'}`}>
-                    <p>{cleanChatText(message.content)}</p>
+
+              {/* Step 1: Search Form */}
+              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+                <div className="space-y-3">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-500">1. Select Specialty</label>
+                  <div className="flex flex-wrap gap-2">
+                    {SPECIALTIES.map((spec) => (
+                      <button
+                        key={spec}
+                        onClick={() => setSearchSpecialty(spec)}
+                        className={`px-5 py-2.5 rounded-lg font-bold text-sm transition-all border ${
+                          searchSpecialty === spec
+                            ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-blue-200"
+                        }`}
+                      >
+                        {spec}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-            <form onSubmit={handleSendMessage} className="grid gap-2 border-t border-slate-200 p-4 sm:grid-cols-[1fr_auto]">
-              <input
-                value={chatMessage}
-                onChange={(event) => setChatMessage(event.target.value)}
-                placeholder="Ask a question about your report"
-                className="rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
-              />
-              <button disabled={chatLoading} className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-60">
-                Send
-              </button>
-            </form>
-          </section>
+
+                <form onSubmit={handleSearchDoctors} className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                  <div className="flex-1 w-full space-y-2">
+                    <label className="text-xs font-black uppercase tracking-wider text-slate-500">2. Enter City Location</label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3.5 top-3.5 h-5 w-5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="e.g. Rourkela"
+                        value={searchCity}
+                        onChange={(e) => setSearchCity(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={searchingDocs}
+                    className="w-full sm:w-auto px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                  >
+                    {searchingDocs ? <Spinner className="border-white h-4 w-4" /> : <Search className="w-4 h-4" />} 
+                    Find Doctors
+                  </button>
+                </form>
+              </div>
+
+              {/* Step 2: Doctor Results Grid */}
+              <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                  <h3 className="text-lg font-black text-slate-900">Available Specialists</h3>
+                  <span className="text-xs font-bold text-slate-500 bg-slate-200/50 px-2.5 py-1 rounded-md">
+                    Sorted by Rating DESC
+                  </span>
+                </div>
+
+                {doctors.length === 0 && !searchingDocs && (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-12 text-center text-slate-500 font-medium">
+                    Enter your city and hit search to load specialists.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {doctors.map((doc) => (
+                    <motion.div
+                      key={doc.id}
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className={`p-5 rounded-xl border bg-white cursor-pointer transition-all ${
+                        selectedDoctor?.id === doc.id
+                          ? "border-blue-500 ring-4 ring-blue-500/10 shadow-md"
+                          : "border-slate-200 hover:border-blue-300 hover:shadow-sm"
+                      }`}
+                      onClick={() => {
+                        setSelectedDoctor(doc);
+                        setSelectedSlot(""); // Reset slot on doctor change
+                      }}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-black text-lg text-slate-900">{doc.name}</h4>
+                          <p className="text-sm text-blue-600 font-bold">{doc.specialty}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60">
+                          <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                          <span className="text-sm font-bold text-amber-700">{doc.average_rating || "New"}</span>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                        <MapPin className="w-4 h-4 text-slate-400" /> {doc.city}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 3: Slot Selection */}
+              <AnimatePresence>
+                {selectedDoctor && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+                      <h3 className="font-black text-slate-900 flex items-center gap-2 text-lg">
+                        <Clock className="w-5 h-5 text-blue-600" /> Select Time for {selectedDoctor.name}
+                      </h3>
+                      <div className="flex flex-wrap gap-3">
+                        {TIME_SLOTS.map((slot) => (
+                          <button
+                            key={slot}
+                            onClick={() => setSelectedSlot(slot)}
+                            className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all border ${
+                              selectedSlot === slot
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-100"
+                            }`}
+                          >
+                            {slot}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100">
+                        <button
+                          disabled={!selectedSlot || bookingLoading}
+                          onClick={handleBookSlot}
+                          className="w-full md:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {bookingLoading && <Spinner className="border-white h-4 w-4" />}
+                          Confirm Appointment
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Confirmation Modal */}
+              <AnimatePresence>
+                {bookingConfirmed && (
+                  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <motion.div
+                      initial={{ scale: 0.95, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.95, opacity: 0 }}
+                      className="bg-white border border-slate-200 max-w-md w-full rounded-2xl p-8 space-y-6 text-center shadow-2xl"
+                    >
+                      <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto" />
+                      <div>
+                        <h3 className="text-2xl font-black text-slate-900">Booking Confirmed!</h3>
+                        <p className="text-slate-500 text-sm mt-1 font-medium">Your digital token has been generated.</p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 space-y-3">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500 font-bold">Queue Token Number</p>
+                        <p className="text-6xl font-black text-blue-600">#{bookingConfirmed.token_number}</p>
+                        <div className="text-xs font-semibold text-slate-600 pt-4 border-t border-slate-200 flex justify-between">
+                          <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5"/> {bookingConfirmed.time_slot}</span>
+                          <span>{bookingConfirmed.booking_date}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setBookingConfirmed(null);
+                          setSelectedDoctor(null);
+                          setSelectedSlot("");
+                        }}
+                        className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition-colors"
+                      >
+                        Done & Close
+                      </button>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+            </motion.div>
+          )}
+
         </main>
 
-        {/* Right Sidebar */}
+        {/* Right Sidebar (Global for all views) */}
         <aside className="space-y-5 border-t border-slate-200 bg-slate-50 p-4 sm:p-6 lg:border-l lg:border-t-0">
           <BmiCalculator />
+          
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 mt-6">
+            <h4 className="text-sm font-black text-blue-900 mb-2">Need Immediate Help?</h4>
+            <p className="text-xs text-blue-800 mb-4 leading-relaxed">If you are experiencing a medical emergency, do not rely on AI triage. Call your local emergency services immediately.</p>
+            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg transition-colors shadow-sm">
+              View Emergency Contacts
+            </button>
+          </div>
         </aside>
+
       </div>
     </div>
   );

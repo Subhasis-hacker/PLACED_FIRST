@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { Star, Users, MapPin, Mail, Clock, ShieldCheck, LogOut, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+
+// Import the API client
+import { doctorDashboardAPI } from '../api/client';
 
 export default function DoctorWorkspace({ doctorId: propDoctorId }) {
   const { user, logout } = useAuth();
@@ -21,24 +24,17 @@ export default function DoctorWorkspace({ doctorId: propDoctorId }) {
     setError(null);
 
     try {
-      const token = localStorage.getItem('token');
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
+      // Using Axios client; tokens are handled automatically by interceptors
       const [resAnalytics, resQueue] = await Promise.all([
-        fetch(`http://localhost:8000/api/doctor/${doctorId}/analytics`, { headers }),
-        fetch(`http://localhost:8000/api/doctor/${doctorId}/queue`, { headers })
+        doctorDashboardAPI.getAnalytics(doctorId),
+        doctorDashboardAPI.getQueue(doctorId)
       ]);
 
-      if (!resAnalytics.ok || !resQueue.ok) {
-        throw new Error('Failed to load server data');
-      }
-
-      const analyticsData = await resAnalytics.json();
-      const queueData = await resQueue.json();
-
-      setAnalytics(analyticsData);
-      setQueue(queueData);
+      // Axios returns parsed JSON inside the .data object
+      setAnalytics(resAnalytics.data);
+      setQueue(resQueue.data);
     } catch (err) {
+      console.error("Dashboard fetch error:", err);
       setError('Unable to connect to backend server or load queue.');
     } finally {
       setLoading(false);

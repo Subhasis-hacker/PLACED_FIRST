@@ -88,9 +88,11 @@ class DoctorCardResponse(BaseModel):
     city: str
     phone: str
     average_rating: float
-
+    
+    # FIX: This configuration tells FastAPI how to read the database object
     class Config:
-        from_attributes = True
+        from_attributes = True  # Use this if you are on Pydantic v2
+        orm_mode = True         # Include this as a fallback if you are on Pydantic v1
 
 class DoctorAnalytics(BaseModel):
     doctor_id: int
